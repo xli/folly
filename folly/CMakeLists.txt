@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set(CMAKE_VERBOSE_MAKEFILE ON)
+
 add_library(
     follybenchmark
     Benchmark.cpp
@@ -72,6 +74,7 @@ if (PYTHON_EXTENSIONS)
   set(glog_lib "${GLOG_LIBRARY}")
   cmake_path(REMOVE_FILENAME glog_lib)
   set(libs "-L${CMAKE_BINARY_DIR}:${glog_lib}")
+  # set(libs "-L${CMAKE_BINARY_DIR}:${CMAKE_BINARY_DIR}/folly:${glog_lib}")
 
   add_custom_target(folly_python_bindings ALL
     DEPENDS folly create_binding_symlink
@@ -160,4 +163,5 @@ if (PYTHON_EXTENSIONS)
       WORKING_DIRECTORY ${_cybld}
     )"
   )
+
 endif ()
