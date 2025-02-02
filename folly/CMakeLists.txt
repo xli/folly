@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set(CMAKE_VERBOSE_MAKEFILE ON)
+
 add_library(
     follybenchmark
     Benchmark.cpp
@@ -38,49 +40,135 @@ if (PYTHON_EXTENSIONS)
 
   set(_cybld "${CMAKE_CURRENT_BINARY_DIR}/cybld")
 
+  add_custom_target(gen_cython_headers ALL)
   add_custom_target(create_binding_symlink ALL)
   file(GLOB BindingFiles
-    "${CMAKE_CURRENT_SOURCE_DIR}/python/*.pyx"
+    "${CMAKE_CURRENT_SOURCE_DIR}/python/executor.pyx"
+    "${CMAKE_CURRENT_SOURCE_DIR}/python/iobuf.pyx"
     "${CMAKE_CURRENT_SOURCE_DIR}/python/*.pxd"
     "${CMAKE_CURRENT_SOURCE_DIR}/python/*.h"
-    "${CMAKE_CURRENT_SOURCE_DIR}/python/*.cpp"
   )
   file(MAKE_DIRECTORY "${_cybld}/folly/")
+  file(MAKE_DIRECTORY "${_cybld}/folly/python/")
 
   foreach(_src ${BindingFiles})
     get_filename_component(_target_file "${_src}" NAME)
 
-  message(
-    STATUS
-    "Linking ${_src} "
-    "to ${_cybld}/folly/${_target_file}"
-  )
-  add_custom_command(TARGET create_binding_symlink PRE_BUILD
-    COMMAND
-      ${CMAKE_COMMAND} -E create_symlink
-      "${_src}"
-      "${_cybld}/folly/${_target_file}"
-  )
+    message(
+      STATUS
+      "Linking ${_src} "
+      "to ${_cybld}/folly/${_target_file}"
+    )
+    add_custom_command(TARGET create_binding_symlink PRE_BUILD
+      COMMAND
+        ${CMAKE_COMMAND} -E create_symlink
+        "${_src}"
+        "${_cybld}/folly/${_target_file}"
+    )
   endforeach()
 
+
   # Tell setup.py where to find includes and libfolly.so
+  # set(prop "$<TARGET_PROPERTY:folly_base,INCLUDE_DIRECTORIES>")
+  # set(incs "$<$<BOOL:${prop}>:-I$<JOIN:${prop},:>>")
+  # set(libs "-L${CMAKE_BINARY_DIR}")
+
   set(prop "$<TARGET_PROPERTY:folly_base,INCLUDE_DIRECTORIES>")
   set(incs "$<$<BOOL:${prop}>:-I$<JOIN:${prop},:>>")
-  set(libs "-L${CMAKE_BINARY_DIR}")
+  # set(link_prop "$<TARGET_PROPERTY:folly_base,LINK_DIRECTORIES>")
+  # set(libs "$<$<BOOL:${link_prop}>:-L$<JOIN:${link_prop},:>>")
+  # set(libs "-L$<JOIN:${link_prop},:>")
+  # set(libs "-L${CMAKE_BINARY_DIR}:${libs}")
+  message(STATUS "[jmswen] ${FOLLY_LINK_LIBRARIES}")
+  message(STATUS "[jmswen] ${CMAKE_REQUIRED_LINK_DIRECTORIES}")
+  #  set(libs "-L$<JOIN:${FOLLY_LINK_LIBRARIES},:>")
+  set(glog_lib "${GLOG_LIBRARY}")
+  cmake_path(REMOVE_FILENAME glog_lib)
+  set(libs "-L${CMAKE_BINARY_DIR}:${CMAKE_BINARY_DIR}/folly:${glog_lib}")
 
   add_custom_target(folly_python_bindings ALL
-    DEPENDS folly create_binding_symlink
+    DEPENDS folly create_binding_symlink gen_cython_headers
     WORKING_DIRECTORY ${_cybld})
 
   add_custom_command(TARGET folly_python_bindings POST_BUILD
     COMMAND
       python3 ${CMAKE_CURRENT_SOURCE_DIR}/python/setup.py
       build_ext -f ${incs} ${libs}
-    BYPRODUCTS ${_cybld}/folly/executor_api.h
+    BYPRODUCTS
+      ${_cybld}/folly/executor_api.h
+      ${_cybld}/folly/iobuf_api.h
     WORKING_DIRECTORY ${_cybld}
   )
 
-  add_custom_command(TARGET folly_python_bindings POST_BUILD
+  add_custom_command(TARGET gen_cython_headers
+    COMMAND cython ${_cybld}/folly/executor.pyx --cplus -3 --fast-fail -o ${_cybld}/folly/cy_executor.h
+  )
+
+  add_custom_command(TARGET gen_cython_headers
+    COMMAND cython ${_cybld}/folly/iobuf.pyx --cplus -3 --fast-fail -o ${_cybld}/folly/cy_iobuf.h
+  )
+
+  add_custom_target(create_post_binding_symlink ALL)
+  add_custom_command(TARGET create_post_binding_symlink
+    COMMAND
+      ${CMAKE_COMMAND} -E create_symlink
+      "${_cybld}/folly/cy_executor_api.h"
+      "${_cybld}/folly/python/executor_api.h"
+  )
+  add_custom_command(TARGET create_post_binding_symlink
+    COMMAND
+      ${CMAKE_COMMAND} -E create_symlink
+      "${_cybld}/folly/cy_iobuf_api.h"
+      "${_cybld}/folly/python/iobuf_api.h"
+  )
+  add_custom_command(TARGET create_post_binding_symlink
+    COMMAND
+      ${CMAKE_COMMAND} -E create_symlink
+      "${_cybld}/folly/iobuf_ext.h"
+      "${_cybld}/folly/python/iobuf_ext.h"
+  )
+  add_custom_command(TARGET create_post_binding_symlink
+    COMMAND
+      ${CMAKE_COMMAND} -E create_symlink
+      "${_cybld}/folly/error.h"
+      "${_cybld}/folly/python/error.h"
+  )
+  add_custom_command(TARGET create_post_binding_symlink
+    COMMAND
+      ${CMAKE_COMMAND} -E create_symlink
+      "${_cybld}/folly/ProactorExecutor.h"
+      "${_cybld}/folly/python/ProactorExecutor.h"
+  )
+
+  add_library(
+    folly_python_cpp
+      python/executor.cpp
+      python/iobuf.cpp
+      python/iobuf_ext.cpp
+      python/error.cpp
+      python/ProactorExecutor.cpp
+  )
+
+  add_dependencies(gen_cython_headers create_binding_symlink)
+  add_dependencies(create_post_binding_symlink gen_cython_headers)
+  add_dependencies(folly_python_cpp create_post_binding_symlink)
+  add_dependencies(folly_python_bindings folly_python_cpp)
+  set_property(TARGET folly_python_cpp PROPERTY VERSION ${PACKAGE_VERSION})
+  target_compile_definitions(folly_python_cpp PRIVATE BOOST_NO_AUTO_PTR)
+  target_include_directories(folly_python_cpp PRIVATE "${_cybld}")
+  target_link_libraries(folly_python_cpp PUBLIC folly)
+  apply_folly_compile_options_to_target(folly_python_cpp)
+  install(
+    TARGETS folly_python_cpp
+    EXPORT folly
+    DESTINATION ${CMAKE_INSTALL_PREFIX}
+  )
+  install(
+    TARGETS folly_python_cpp
+    DESTINATION ${PYTHON_INSTALL_DIR}
+  )
+
+  add_custom_command(TARGET folly_python_bindings
     COMMAND
       python3 ${CMAKE_CURRENT_SOURCE_DIR}/python/setup.py
       bdist_wheel
@@ -88,23 +176,39 @@ if (PYTHON_EXTENSIONS)
   )
 
   install(
-    FILES ${_cybld}/folly/executor_api.h
+    FILES
+      ${_cybld}/folly/executor_api.h
+      ${_cybld}/folly/iobuf_api.h
+      ${_cybld}/folly/iobuf_ext.h
+      ${_cybld}/folly/import.h
+      ${_cybld}/folly/error.h
+      ${_cybld}/folly/ProactorExecutor.h
     DESTINATION ${INCLUDE_INSTALL_DIR}/folly/python
     COMPONENT dev
   )
 
   # Install Folly Python Bindings
-  if (UNIX)
-    set(ROOT_ARG "--root \$DESTDIR/")
-  endif ()
-
   install(CODE "
     execute_process(
       COMMAND
         python3 ${CMAKE_CURRENT_SOURCE_DIR}/python/setup.py install
-        --prefix ${CMAKE_INSTALL_PREFIX} ${ROOT_ARG}
+        --prefix ${CMAKE_INSTALL_PREFIX} -v
       COMMAND_ECHO STDOUT
       WORKING_DIRECTORY ${_cybld}
     )"
   )
+
+  # Install to a second directory. Unfrotunately, setting CMAKE_INSTALL_PREFIX
+  # directly does not play nicely with getdeps.py.
+  if (NOT ${PYTHON_INSTALL_DIR} STREQUAL "")
+    install(CODE "
+      execute_process(
+        COMMAND
+          python3 ${CMAKE_CURRENT_SOURCE_DIR}/python/setup.py install
+          --prefix ${PYTHON_INSTALL_DIR}
+        COMMAND_ECHO STDOUT
+        WORKING_DIRECTORY ${_cybld}
+      )"
+    )
+  endif()
 endif ()

@@ -2,8 +2,8 @@
 name = boost
 
 [download.not(os=windows)]
-url = https://archives.boost.io/release/1.83.0/source/boost_1_83_0.tar.gz
-sha256 = c0685b68dd44cc46574cce86c4e17c0f611b15e195be9848dfd0769a0a207628
+url = https://archives.boost.io/release/1.87.0/source/boost_1_87_0_rc1.tar.gz
+sha256 = f55c340aa49763b1925ccf02b2e83f35fdcf634c9d5164a2acb87540173c741d
 
 [download.os=windows]
 url = https://archives.boost.io/release/1.83.0/source/boost_1_83_0.zip
@@ -12,7 +12,7 @@ sha256 = c86bd9d9eef795b4b0d3802279419fde5221922805b073b9bd822edecb1ca28e
 [preinstalled.env]
 # Here we list the acceptable versions that cmake needs a hint to find
 BOOST_ROOT_1_69_0
-BOOST_ROOT_1_83_0
+BOOST_ROOT_1_87_0
 
 [debs]
 libboost-all-dev
