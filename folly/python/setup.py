@@ -74,6 +74,11 @@ setup(
     zip_safe=False,
     ext_modules=cythonize(
         exts,
-        compiler_directives={"language_level": 3},
+        compiler_directives={
+            "language_level": 3,
+            "binding": False,
+            "emit_code_comments": False,
+            "legacy_implicit_noexcept": True,
+        },
     ),
 )
